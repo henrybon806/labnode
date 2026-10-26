@@ -7,8 +7,8 @@ busy/done state and error reporting.
 ## Install
 
 ```bash
-pip install -e ./packages/labnode            # from the gantryManager repo
-pip install -e "./packages/labnode[test]"    # plus test dependencies
+pip install "labnode @ git+https://github.com/henrybon806/labnode.git@labnode-v0.1.0"
+pip install "../labnode[test]"    # from a local clone, plus test dependencies
 ```
 
 ## Write a node
