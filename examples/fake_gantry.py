@@ -1,23 +1,47 @@
-"""A fake gantry that wanders around so /position has something to show.
+"""A fake gantry: each move takes MOVE_TIME seconds along a straight line.
 
     python examples/fake_gantry.py
+
+Then POST /move {"x": .., "y": ..} and watch GET /status or GET /position.
 """
 
-import math
 import time
 
-from labnode import Experiment, serve
+from labnode import Gantry, serve
 
 
-class FakeGantry(Experiment):
+MOVE_TIME = 1.0
+
+
+class FakeGantry(Gantry):
     name = "gantry"
 
-    def position(self):
-        t = time.monotonic() / 4
-        return {"x": 50 + 40 * math.cos(t), "y": 30 + 20 * math.sin(2 * t), "z": 0.0}
+    def __init__(self):
+        self._from = self._to = (0.0, 0.0)
+        self._started = self._arrives = time.monotonic()
 
-    def run(self, sample_id, params):
-        raise NotImplementedError("moves are not wired up in this example")
+    def position(self):
+        span = self._arrives - self._started
+        progress = 1.0 if span <= 0 else min(1.0, (time.monotonic() - self._started) / span)
+        x = self._from[0] + (self._to[0] - self._from[0]) * progress
+        y = self._from[1] + (self._to[1] - self._from[1]) * progress
+        return {"x": x, "y": y, "z": 0.0}
+
+    def move(self, x, y, z, params):
+        here = self.position()
+        self._from, self._to = (here["x"], here["y"]), (x, y)
+        self._started = time.monotonic()
+        self._arrives = self._started + MOVE_TIME
+        while time.monotonic() < self._arrives:
+            if self.stop_requested:
+                return
+            time.sleep(0.02)
+
+    def stop(self):
+        # Freeze where it is; move() sees stop_requested and returns.
+        here = self.position()
+        self._from = self._to = (here["x"], here["y"])
+        self._started = self._arrives = time.monotonic()
 
 
 if __name__ == "__main__":

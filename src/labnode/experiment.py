@@ -6,6 +6,8 @@ import threading
 import time
 from typing import Any, Optional
 
+from labnode._version import __version__
+
 
 IDLE = "idle"
 BUSY = "busy"
@@ -97,6 +99,8 @@ class Experiment:
                 remaining = max(0.0, self._estimated - elapsed)
             return {
                 "name": self.name,
+                "kind": "experiment",
+                "labnode": __version__,
                 "state": self._state,
                 "busy": self._state in (BUSY, STOPPING),
                 "occupied": self._state in OCCUPIED_STATES,

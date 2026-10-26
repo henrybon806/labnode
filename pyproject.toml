@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "labnode"
-version = "0.1.0"
+version = "0.2.0"
 description = "Wrap a lab instrument in a small REST API: write run(), get /status, /start, /stop and /taken."
 readme = "README.md"
 requires-python = ">=3.9"

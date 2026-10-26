@@ -82,3 +82,19 @@ class NodeClient:
 
     def taken(self, sample_id: Optional[str] = None) -> dict[str, Any]:
         return self._request("POST", "/taken", {"sample_id": sample_id})
+
+    # Gantry nodes only. Each starts the action and returns at once; watch
+    # /status until "state" is "idle" again (or "error").
+
+    def move(self, x: float, y: float, z: Optional[float] = None,
+             params: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+        return self._request("POST", "/move", {"x": x, "y": y, "z": z, "params": params or {}})
+
+    def pick(self, params: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+        return self._request("POST", "/pick", {"params": params or {}})
+
+    def place(self, params: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+        return self._request("POST", "/place", {"params": params or {}})
+
+    def home(self, params: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+        return self._request("POST", "/home", {"params": params or {}})

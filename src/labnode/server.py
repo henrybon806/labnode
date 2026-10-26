@@ -10,7 +10,9 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
+from labnode._version import __version__
 from labnode.experiment import Experiment, NodeConflict, NotSupported
+from labnode.gantry import Gantry
 
 
 TOKEN_ENV = "LABNODE_TOKEN"
@@ -26,9 +28,20 @@ class TakenRequest(BaseModel):
     sample_id: Optional[str] = None
 
 
-def create_app(node: Experiment, token: Optional[str] = None) -> FastAPI:
+class MoveRequest(BaseModel):
+    x: float
+    y: float
+    z: Optional[float] = None
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+class ActionRequest(BaseModel):
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+def create_app(node: "Experiment | Gantry", token: Optional[str] = None) -> FastAPI:
     """Build the app. With ``token`` set, POST endpoints need ``Authorization: Bearer <token>``."""
-    app = FastAPI(title=f"labnode: {node.name}", version="0.1.0")
+    app = FastAPI(title=f"labnode: {node.name}", version=__version__)
     bearer = HTTPBearer(auto_error=False)
 
     def authorize(credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer)) -> None:
@@ -44,6 +57,10 @@ def create_app(node: Experiment, token: Optional[str] = None) -> FastAPI:
             raise HTTPException(status_code=409, detail=str(error)) from None
         except NotSupported as error:
             raise HTTPException(status_code=501, detail=str(error)) from None
+
+    if isinstance(node, Gantry):
+        _add_gantry_routes(app, node, authorize, call)
+        return app
 
     @app.get("/status", summary="Current state: idle, busy, stopping, done, stopped or error")
     def get_status() -> dict[str, Any]:
@@ -72,8 +89,44 @@ def create_app(node: Experiment, token: Optional[str] = None) -> FastAPI:
     return app
 
 
+def _add_gantry_routes(app: FastAPI, node: Gantry, authorize, call) -> None:
+    @app.get("/status", summary="Current state: idle, busy or error, plus action, position and target")
+    def get_status() -> dict[str, Any]:
+        return node.status()
+
+    @app.get("/position", summary="Current position reported by the gantry")
+    def get_position() -> dict[str, float]:
+        return node.position()
+
+    @app.post("/move", status_code=202, dependencies=[Depends(authorize)],
+              summary="Move to (x, y) and optionally z; 409 while busy")
+    def post_move(request: MoveRequest) -> dict[str, Any]:
+        return call(node.start_move, request.x, request.y, request.z, request.params)
+
+    for action, summary in (
+        ("pick", "Pick up the sample under the head"),
+        ("place", "Put down the held sample"),
+        ("home", "Run the homing routine"),
+    ):
+        app.add_api_route(
+            f"/{action}", _action_endpoint(node, action, call), methods=["POST"], status_code=202,
+            dependencies=[Depends(authorize)], summary=f"{summary}; 409 while busy, 501 if not implemented",
+        )
+
+    @app.post("/stop", dependencies=[Depends(authorize)],
+              summary="Emergency stop; 501 if the gantry has no stop()")
+    def post_stop() -> dict[str, Any]:
+        return call(node.request_stop)
+
+
+def _action_endpoint(node: Gantry, action: str, call):
+    def post_action(request: Optional[ActionRequest] = None) -> dict[str, Any]:
+        return call(node.start_action, action, request.params if request else {})
+    return post_action
+
+
 def serve(
-    node: Experiment,
+    node: "Experiment | Gantry",
     port: int = 8000,
     host: str = "0.0.0.0",
     token: Optional[str] = None,
